@@ -1,0 +1,10 @@
+local GUI = game.Players.LocalPlayer.PlayerGui
+local ammoMax = script.Parent:GetAttribute("MaxAmmo")
+
+wait()
+while true do
+	local ammo = script.Parent:GetAttribute("CurrentAmmo")
+	local ammoCur = ammo
+	GUI:WaitForChild("AmmoHUD").AmmoInfo.Box.AmmoCounter.Text = (tostring(ammoCur).."/"..tostring(ammoMax))
+	repeat wait() until ammoCur ~= script.Parent:GetAttribute("CurrentAmmo")
+end
