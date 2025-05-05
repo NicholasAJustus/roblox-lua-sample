@@ -5,6 +5,7 @@ Players = game:GetService("Players")
 Debris = game:GetService("Debris")
 RunService = game:GetService("RunService")
 BuffFolder = game:GetService("ServerScriptService"):FindFirstChild("PlayerBuff")
+remoteReload = Tool:WaitForChild("ReloadRequest")
 
 local Character
 local Humanoid
@@ -29,6 +30,7 @@ local StancePas
 local StanceAct
 local StanceSweep
 local loadedAnims = false
+local details = game:GetService("ReplicatedStorage").Details
 
 for i, x in pairs(Tool.AppliedBuffs:GetChildren()) do
 	Buffs[i] = x.Name
@@ -41,20 +43,33 @@ if script.Parent:GetAttribute("CanScope") == false then
 	Tool.Scope:Destroy()
 end
 
+function detailsMeter(incDMG)
+	local dpsfolder = details:FindFirstChild("DetailsTracker"..Player.Name)
+	local tracker
+	if not dpsfolder:FindFirstChild(Tool.Name) then
+		tracker = Instance.new("NumberValue")
+		tracker.Name = Tool.Name
+		tracker.Parent = dpsfolder
+	else
+		tracker = dpsfolder:FindFirstChild(Tool.Name)
+	end
+	tracker.Value += incDMG
+end
+
 --Main
 function Attack(lv)
 	if Humanoid and Humanoid.Health > 0 and debounce == false and Tool:GetAttribute("Reloading") == false then
 		debounce = true
 		local distance = (lv - Handle.Position).Magnitude
 		if ToolEquipped == true and Tool:GetAttribute("Reloading") == false then
-			if Tool:GetAttribute("CurrentAmmo") <= 0 then
+			if Tool:GetAttribute("CurrentAmmo") <= 0 and Tool:GetAttribute("Reloading") == false and Tool:GetAttribute("GunEquipped") == true then
 				--Reloading	
 				Reload()
 			else
 				--Firing
 				Tool:SetAttribute("CurrentAmmo", Tool:GetAttribute("CurrentAmmo") - 1)
 				--Sound
-				SFX()
+				task.spawn(SFX)
 				--Animation
 				StanceSweep:Play()
 				--Raycast shot position
@@ -62,7 +77,7 @@ function Attack(lv)
 				local Direction = (CFrame.new(Start,lv) * CFrame.Angles(math.rad(-SPREAD+(math.random()*(SPREAD*2))),math.rad(-SPREAD+(math.random()*(SPREAD*2))),0)).LookVector
 				local Hit,EndPos = RayCast(Start,Direction,5000,Player.Character)
 				--Flash
-				VFX()
+				task.spawn(VFX)
 				--Shot landed
 				if Hit then
 					--Living Target
@@ -72,33 +87,37 @@ function Attack(lv)
 						--If Headshots are Enabled
 						if Hit.Name == "Head" and CANHEADSHOT == true then
 							if game.Players:FindFirstChild(Victim.Parent.Name) and game.Players:FindFirstChild(Victim.Parent.Name).Team.Name == "Zombies" then
-								Victim:TakeDamage((DAMAGE+math.random(-1,1)) * HEADSHOT * (game:GetService("ServerScriptService"):FindFirstChild("PlayerBuff"):FindFirstChild("BuffTracker"..Victim.Parent.Name):FindFirstChild("Incoming Dmg Multiplier").Value))
+								local dmgCalc = (DAMAGE+math.random(-1,1)) * HEADSHOT * (game:GetService("ServerScriptService"):FindFirstChild("PlayerBuff"):FindFirstChild("BuffTracker"..Victim.Parent.Name):FindFirstChild("Incoming Dmg Multiplier").Value) 
+								Victim:TakeDamage(dmgCalc)
+								task.spawn(detailsMeter, dmgCalc)
 							elseif Victim.Parent.Name ~= "_DESTRUCTABLE" and not game.Players:FindFirstChild(Victim.Parent.Name) then
 								Victim:TakeDamage((DAMAGE+math.random(-1,1)) * HEADSHOT)
 							end
 						--If Headshots are disabled or just a Body Shot
 						else
 							if game.Players:FindFirstChild(Victim.Parent.Name) and game.Players:FindFirstChild(Victim.Parent.Name).Team.Name == "Zombies" then
-								Victim:TakeDamage((DAMAGE+math.random(-1,1)) * (game:GetService("ServerScriptService"):FindFirstChild("PlayerBuff"):FindFirstChild("BuffTracker"..Victim.Parent.Name):FindFirstChild("Incoming Dmg Multiplier").Value))		
+								local dmgCalc = (DAMAGE+math.random(-1,1)) * (game:GetService("ServerScriptService"):FindFirstChild("PlayerBuff"):FindFirstChild("BuffTracker"..Victim.Parent.Name):FindFirstChild("Incoming Dmg Multiplier").Value)
+								Victim:TakeDamage(dmgCalc)
+								task.spawn(detailsMeter, dmgCalc)
 							elseif Victim.Parent.Name ~= "_DESTRUCTABLE" and not game.Players:FindFirstChild(Victim.Parent.Name) then
 								Victim:TakeDamage(DAMAGE+math.random(-1,1))
 							end
 						end
 						--Tag Credit
-						TagHumanoid(Victim, Player)
+						task.spawn(TagHumanoid, Victim, Player)
 						--Apply Buffs/Debuffs
-						ApplyEffect(Buffs, Victim.Parent.Name)
+						task.spawn(ApplyEffect, Buffs, Victim.Parent.Name)
 					--Breakable Glass
 					elseif string.lower(Hit.Name) == "glass" then
-						ShatterGlass(Hit)
+						task.spawn(ShatterGlass, Hit)
 					end
 				end
 				--Mark where shot landed
-				DrawHit(EndPos, Hit)
+				task.spawn(DrawHit, EndPos, Hit)
 			end
 		end
 	end
-	if Tool:GetAttribute("CurrentAmmo") <= 0 then
+	if Tool:GetAttribute("CurrentAmmo") <= 0 and Tool:GetAttribute("Reloading") == false and Tool:GetAttribute("GunEquipped") == true then
 		wait(COOLDOWN)
 		Reload()
 	else
@@ -184,8 +203,9 @@ function ShatterGlass(Hit)
 	game.Debris:AddItem(Hit, 1)
 end
 
-function Reload()
+function Reload(Player)
 	Tool:SetAttribute("Reloading", true)
+	Tool:SetAttribute("CurrentAmmo", 0)
 	local tempMag = Tool.Handle.MagDump.EmptyMag:Clone()
 	tempMag.Parent = game.Workspace.CurrentMap.Junk
 	tempMag.Transparency = 0
@@ -196,7 +216,9 @@ function Reload()
 	Tool.Handle.Reload.PlaybackSpeed = Random.new():NextNumber(0.95,1.05)
 	Tool.Handle.Reload:Play()
 	wait(RELOADRATE)
-	Tool:SetAttribute("CurrentAmmo", MAXAMMO)
+	if Tool:GetAttribute("GunEquipped") == true and Tool:GetAttribute("Reloading") == true then
+		Tool:SetAttribute("CurrentAmmo", MAXAMMO)
+	end
 	Tool:SetAttribute("Reloading", false)
 end
 
@@ -312,6 +334,7 @@ function WeldToBack(bool)
 					weapClone.CanCollide = false
 					weapClone.Name = "Item"
 					weapClone.Parent = model
+					weapClone.Massless = true
 
 					local weld = Instance.new("Weld")
 					weld.Name = "BackWeld"
@@ -339,6 +362,7 @@ end
 function Equipped()
 	Character = Tool.Parent
 	Player = Players:GetPlayerFromCharacter(Character)
+	script.Parent.AmmoUI.Enabled = true
 	WeldToBack(true)
 	Humanoid = Character:FindFirstChildOfClass("Humanoid")
 	Torso = Character:FindFirstChild("Torso") or Character:FindFirstChild("HumanoidRootPart")
@@ -365,9 +389,11 @@ function Unequipped()
 	end
 	ToolEquipped = false
 	Tool:SetAttribute("GunEquipped", false)
+	Tool:SetAttribute("Reloading", false)
 	WeldToBack(false)
 end
 
 remote.OnServerEvent:Connect(Activated)
 Tool.Equipped:Connect(Equipped)
 Tool.Unequipped:Connect(Unequipped)
+remoteReload.OnServerEvent:Connect(Reload)
